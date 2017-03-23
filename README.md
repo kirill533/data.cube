@@ -1,2 +1,2 @@
-# data.cube
+# olap.cube
 R package that provides OLAP and ROLAP functionality
