@@ -1,0 +1,185 @@
+{
+    "cubes": [
+        {
+            "name":"facts",
+            "dimensions": ["city"],
+            "measures": [
+                    "amount"
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "method": "match"
+                }
+            ]
+        },
+        {
+            "name":"facts_master",
+            "dimensions": ["city"],
+            "measures": [
+                    "amount"
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "method": "master"
+                }
+            ],
+            "fact": "facts"
+        },
+        {
+            "name":"facts_detail_city",
+            "dimensions": ["city"],
+            "measures": [
+                    "amount"
+                ],
+            "aggregates": [
+                    {"name": "record_count", "function": "count"}
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "method": "detail"
+                }
+            ],
+            "fact": "facts"
+        },
+        {
+            "name":"facts_detail_date",
+            "dimensions": ["date"],
+            "measures": [
+                    "amount"
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_date",
+                    "detail": "dim_date.id",
+                    "method": "detail"
+                }
+            ],
+            "fact": "facts"
+        },
+        {
+            "name":"threetables",
+            "dimensions": ["date", "city"],
+            "measures": [ "amount" ],
+            "aggregates": [
+                    {"name": "record_count", "function": "count"}
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_date",
+                    "detail": "dim_date.id",
+                    "method": "match"
+                },
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "method": "match"
+                }
+            ],
+            "fact": "facts"
+        },
+        {
+            "name":"condition_and_drilldown",
+            "dimensions": ["date", "city"],
+            "measures": [ "amount" ],
+            "aggregates": [
+                    {"name": "record_count", "function": "count"}
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_date",
+                    "detail": "dim_date.id",
+                    "method": "detail"
+                },
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "method": "match"
+                }
+            ],
+            "fact": "facts"
+        },
+        {
+            "name":"masterdetail",
+            "dimensions": ["date_match", "city_match",
+                           "date_detail", "city_detail"],
+            "measures": [ "amount" ],
+            "aggregates": [
+                    {"name": "record_count", "function": "count"}
+                ],
+            "joins": [
+                {
+                    "master": "facts.id_date",
+                    "detail": "dim_date.id",
+                    "alias": "dim_date_match",
+                    "method": "match"
+                },
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "alias": "dim_city_match",
+                    "method": "match"
+                },
+                {
+                    "master": "facts.id_date",
+                    "detail": "dim_date.id",
+                    "alias": "dim_date_detail",
+                    "method": "detail"
+                },
+                {
+                    "master": "facts.id_city",
+                    "detail": "dim_city.id",
+                    "alias": "dim_city_detail",
+                    "method": "detail"
+                }
+            ],
+            "fact": "facts"
+        }
+    ],
+    "dimensions": [
+        {
+            "name":"date",
+            "type": "date",
+            "levels": [
+                    {"name":"year"},
+                    {"name":"month"},
+                    {"name":"day"}
+                ]
+        },
+        {
+            "name":"city",
+            "levels": [
+                    {"name":"city", "attributes": ["id", "name"]},
+                    {"name":"country"}
+                ]
+        },
+        {
+            "name":"country",
+            "levels": [
+                    {"name":"name"}
+                ]
+        },
+        {
+            "name": "date_match",
+            "template": "date"
+        },
+        {
+            "name": "date_detail",
+            "template": "date"
+        },
+        {
+            "name": "city_match",
+            "template": "city"
+        },
+        {
+            "name": "city_detail",
+            "template": "city"
+        }
+    ]
+
+}
