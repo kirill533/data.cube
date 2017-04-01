@@ -1,7 +1,10 @@
+#' @include metadata_base.R
+
+
 create_list_of <- function(class_, objects) {
   # Return a list of model objects of class `class_` from list of object
   #   metadata `objects`
-  lapply(objects, function(obj) {do.call(paste0(AttributeBase$className, '.from_metadata'), obj)})
+  lapply(objects, function(obj) {do.call(paste0(class_$className, '.from_metadata'), list(metadata=obj))})
 }
 
 
@@ -31,11 +34,56 @@ create_list_of <- function(class_, objects) {
 #
 #   `cubes.ArgumentError` is raised when unknown ordering type is
 #   specified.
-AttributeBase = setRefClass('AttributeBase', contains = 'ModelObject')
+AttributeBase = setRefClass(
+  'AttributeBase',
+  contains = 'ModelObject',
+  fields = c('order', 'format', 'expression', 'missing_value', 'ref', 'dimension'),
+  methods = list(
+
+    initialize = function(order=NULL, format=NULL, missing_value=NULL, expression=NULL, ...) {
+
+      callSuper(...)
+
+      format <<- format
+      missing_value <<- missing_value
+      # TODO: temporarily preserved, this should be present only in
+      # Attribute object, not all kinds of attributes
+      dimension <<- NULL
+
+      expression <<- expression
+      ref <<- name
+
+      if (!is.null(order)) {
+        order_lovercase <- stringr::str_to_lower(order)
+
+        if (substr(order_lovercase, 1, 3) == 'asc') {
+          order <<- Attribute.ASC
+        } else if (substr(order_lovercase, 1, 3) == 'desc') {
+          order <<- Attribute.DESC
+        } else {
+          stop(sprintf("ArgumentError: Unknown ordering '%s' for attributes '%s'", order, ref))
+        }
+
+      } else {
+        order <<- NULL
+      }
+
+    }
+  )
+)
 
 
-AttributeBase.from_metadata <- function() {
-
+AttributeBase.from_metadata <- function(metadata=list(), class_ = AttributeBase) {
+  if (is.character(metadata)) {
+    do.call(class_$new, list(name=metadata))
+  } else if (class_$className %in% class(metadata)) {
+    metadata$copy()
+  } else {
+    if (is.null(metadata$name)) {
+      stop("ModelError: Model objects metadata require at least name to be present.")
+    }
+    do.call(class_$new, metadata)
+  }
 }
 
 # Dimension attribute object. Also used as fact detail.
@@ -65,8 +113,9 @@ AttributeBase.from_metadata <- function() {
 Attribute = setRefClass('Attribute', contains = 'AttributeBase')
 
 
-Attribute.from_metadata <- function() {
-  Attribute$new()
+
+Attribute.from_metadata <- function(metadata=list()) {
+  AttributeBase.from_metadata(metadata = metadata, class_ = Attribute)
 }
 
 # Create a measure attribute. Properties in addition to the attribute
@@ -76,7 +125,7 @@ Attribute.from_metadata <- function() {
 # * `aggregates` – list of default (relevant) aggregate functions that
 #   can be applied to this measure attribute.
 # * `nonadditive` – kind of non-additivity of the dimension. Possible
-#   values: `none` (fully additive, default), ``time`` (non-additive for
+#   values: `NULL` (fully additive, default), ``time`` (non-additive for
 #   time dimensions) or ``all`` (non-additive for any other dimension)
 #
 # Note that if the `formula` is specified, it should not refer to any
@@ -89,12 +138,37 @@ Attribute.from_metadata <- function() {
 # String representation of a `Measure` returns its full reference.
 Measure = setRefClass(
   'Measure',
-  contains = 'AttributeBase'
+  contains = 'ModelObject',
+  fields = c('aggregates', 'formula', 'nonadditive', 'window_size'),
+
+  methods = list(
+
+    initialize = function( aggregates=NULL, formula=NULL, nonadditive=NULL,
+                           window_size=NULL, ...) {
+
+      callSuper(...)
+
+      formula <<- formula
+      aggregates <<- aggregates
+      window_size <<- window_size
+
+      # Note: synchronize with Dimension.__init__ if relevant/necessary
+      if (is.null(nonadditive) || nonadditive == "none") {
+        nonadditive <<- NULL
+      } else if (nonadditive %in% c("all", "any")) {
+        nonadditive <<- "any"
+      } else if (nonadditive == "time") {
+        nonadditive <<- "time"
+      } else {
+        stop(sprintf("ModelError: Unknown non-additive measure type '%s'", nonadditive))
+      }
+    }
+  )
 )
 
 
-Measure.from_metadata <- function() {
-  Measure$new()
+Measure.from_metadata <- function(metadata=list()) {
+  AttributeBase.from_metadata(metadata = metadata, class_ = Measure)
 }
 
 
@@ -110,11 +184,11 @@ Measure.from_metadata <- function() {
 # * `nonadditive` – additive behavior for the aggregate (inherited from
 #   the measure in most of the times)
 MeasureAggregate = setRefClass(
-  'Measure',
+  'MeasureAggregate',
   contains = 'AttributeBase'
 )
 
 
-MeasureAggregate.from_metadata <- function() {
-  MeasureAggregate$new()
+MeasureAggregate.from_metadata <- function(metadata=list()) {
+  AttributeBase.from_metadata(metadata = metadata, class_ = MeasureAggregate)
 }

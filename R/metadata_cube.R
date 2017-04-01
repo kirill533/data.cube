@@ -22,6 +22,9 @@ expand_dimension_links <- function(metadata) {
   # least one key `name`. Other keys are: `hierarchies`,
   # `default_hierarchy_name`, `nonadditive`, `cardinality`, `template`
 
+  #lapply(metadata, function() {
+    # TODO it might be needed to refactor it with lapply
+  #})
   links = c()
 
   for (link in metadata) {
@@ -56,15 +59,11 @@ expand_cube_metadata <- function(metadata) {
 
     measures = c()
 
-    for (attr in metadata$measures) {
-      attr = expand_attribute_metadata(attr)
-      if (!is.null(nonadditive) && is.null(attr$nonadditive)) {
-        attr$nonadditive = nonadditive
-      }
-
-      measures = c(measures, attr)
+    if (!is.null(names(metadata$measures))) {
+      metadata$measures = list(metadata$measures)
     }
-    metadata$measures = measures
+
+    metadata$measures = lapply(metadata$measures, expand_attribute_metadata)
   }
 
   if (length(links) > 0) {
