@@ -85,6 +85,18 @@ Cube = setRefClass(
 
   methods = list(
 
+    initialize = function(name = NULL, dimensions = NULL, measures = NULL, aggregates = NULL,
+                          label = NULL, details = NULL, mappings = NULL, joins = NULL,
+                          fact = NULL, key = NULL, description = NULL, browser_options = NULL,
+                          info = NULL, dimension_links = NULL, locale = NULL, category = NULL,
+                          store = NULL, options = NULL) {
+
+      callSuper(name = name, dimensions = dimensions, measures = measures, aggregates = aggregates,
+                label = label, details = details, mappings = mappings, joins = joins,
+                fact = fact, key = key, description = description, browser_options = browser_options,
+                info = info, dimension_links = dimension_links, locale = locale, category = category,
+                store = store, options = options)
+    }
 
   )
 )

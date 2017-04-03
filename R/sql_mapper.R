@@ -36,7 +36,7 @@ distill_naming <- function(dictionary) {
     }
   }
 
-  Naming$new(config=dictionary)
+  do.call(Naming$new, dictionary)
 }
 
 privat_match_names = function(pattern, names) {
@@ -108,12 +108,38 @@ Naming = setRefClass(
   ),
   methods = list(
 
-    initialize = function(...) {
+    initialize = function(dimension_prefix = NULL, dimension_suffix = NULL, dim_name_pattern = NULL,
+                          fact_name_pattern = NULL, fact_prefix = NULL, fact_suffix = NULL,
+                          dim_key_pattern = NULL, dimension_key_prefix = NULL, dimension_key_suffix = NULL,
+                          denormalized_prefix = NULL,
+                          denormalized_suffix = NULL,
+                          aggregated_prefix = NULL,
+                          aggregated_suffix = NULL,
+                          fact_key = NULL,
+                          dimension_key = NULL,
+                          explicit_dimension_primary = NULL,
+                          schema = NULL,
+                          fact_schema = NULL,
+                          dimension_schema = NULL,
+                          aggregate_schema = NULL) {
       # Creates a `Naming` object instance from a dictionary. If `fact_key`
       # or `dimension_key` are not specified, then they are set to ``id`` by
       # default.
 
-      callSuper(...)
+      callSuper(dimension_prefix = dimension_prefix, dimension_suffix = dimension_suffix, dim_name_pattern = dim_name_pattern,
+                fact_name_pattern = fact_name_pattern, fact_prefix = fact_prefix, fact_suffix = fact_suffix,
+                dim_key_pattern = dim_key_pattern, dimension_key_prefix = dimension_key_prefix, dimension_key_suffix = dimension_key_suffix,
+                denormalized_prefix = denormalized_prefix,
+                denormalized_suffix = denormalized_suffix,
+                aggregated_prefix = aggregated_prefix,
+                aggregated_suffix = aggregated_suffix,
+                fact_key = fact_key,
+                dimension_key = dimension_key,
+                explicit_dimension_primary = explicit_dimension_primary,
+                schema = schema,
+                fact_schema = fact_schema,
+                dimension_schema = dimension_schema,
+                aggregate_schema = aggregate_schema)
 
       # Set the defaults
       for (key in names(NAMING_DEFAULTS)) {
@@ -130,7 +156,7 @@ Naming = setRefClass(
 
     },
 
-    dimension_table_name <- function(name) {
+    dimension_table_name = function(name) {
       # Constructs a physical dimension table name for dimension `name`
       sprintf('%s%s%s', dimension_prefix, name, dimension_suffix)
     },
@@ -192,7 +218,7 @@ Naming = setRefClass(
 # cube attributes. Does implicit mapping of an attribute.
 Mapper = setRefClass(
   'Mapper',
-  fields = c('cube', 'naming'),
+  fields = c('cube', 'naming', 'mappings', 'fact_name'),
   methods = list(
     initialize = function(cube, naming) {
       # Creates a mapping for `cube` using `naming` conventions within
@@ -202,8 +228,7 @@ Mapper = setRefClass(
       callSuper()
 
       naming <<- naming
-      locale <<- locale
-      mappings <<- elseif(!is.null(mappings), mappings, list())
+      mappings <<- ifelse(!is.null(cube$mappings), cube$mappings, list())
       fact_name <<- ifelse(!is.null(cube$fact), cube$fact, naming$fact_table_name(cube$name))
     },
 
