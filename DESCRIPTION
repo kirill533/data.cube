@@ -20,4 +20,5 @@ Collate:
     'metadata_cube.R'
     'metadata_providers.R'
     'sql_mapper.R'
+    'sql_query.R'
 RoxygenNote: 5.0.1

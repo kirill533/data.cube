@@ -1,5 +1,7 @@
 context('MapperTestCase')
 
+source('tests/common.R')
+
 self.provider = create_provider("mapper_test.json")
 
 self.cube = self.provider$cube("sales")
@@ -10,7 +12,7 @@ naming = list(
 )
 
 self.naming = distill_naming(naming)
-self.mapper = StarSchemaMapper(self.cube, self.naming)
+self.mapper = StarSchemaMapper$new(cube = self.cube, naming = self.naming)
 
 self.mapper$mappings = list(
   "product.name" = "product.product_name",
