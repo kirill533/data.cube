@@ -13,11 +13,13 @@ LazyData: true
 Suggests:
     testthat
 Collate:
+    'cubes_common.R'
     'data.R'
     'data.cube.R'
     'metadata_base.R'
     'metadata_attributes.R'
     'metadata_cube.R'
+    'metadata_dimension.R'
     'metadata_providers.R'
     'sql_mapper.R'
     'sql_query.R'

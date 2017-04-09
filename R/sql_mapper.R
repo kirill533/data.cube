@@ -157,31 +157,41 @@ Naming = setRefClass(
     },
 
     dimension_table_name = function(name) {
+      if (!is.character(name))
+        name = name$name
       # Constructs a physical dimension table name for dimension `name`
-      sprintf('%s%s%s', dimension_prefix, name, dimension_suffix)
+      sprintf('%s%s%s', nvl(dimension_prefix, ''), name, nvl(dimension_suffix, ''))
     },
 
     fact_table_name = function(name) {
+      if (!is.character(name))
+        name = name$name
       # Constructs a physical fact table name for fact/cube `name`
-      sprintf('%s%s%s', fact_prefix, name, fact_suffix)
+      sprintf('%s%s%s', nvl(fact_prefix, ''), name, nvl(fact_suffix, ''))
     },
 
     denormalized_table_name = function(name) {
+      if (!is.character(name))
+        name = name$name
       # Constructs a physical fact table name for fact/cube `name`
-      sprintf('%s%s%s', denormalized_prefix, name, denormalized_suffix)
+      sprintf('%s%s%s', nvl(denormalized_prefix, ''), name, nvl(denormalized_suffix, ''))
     },
 
     # TODO: require list of dimensions here
     aggregated_table_name = function(name) {
+      if (!is.character(name))
+        name = name$name
       # Constructs a physical fact table name for fact/cube `name`
-      sprintf('%s%s%s', aggregated_prefix, name, aggregated_suffix)
+      paste0(aggregated_prefix, name, aggregated_suffix)
     },
 
     dimension_primary_key = function(name) {
+      if (!is.character(name))
+        name = name$name
       # Constructs a dimension primary key name for dimension `name`
 
       if (explicit_dimension_primary) {
-        sprintf('%s%s%s', dimension_key_prefix, name, dimension_key_suffix)
+        paste0(dimension_key_prefix, name, dimension_key_suffix)
       } else {
         dimension_key
       }
@@ -228,8 +238,8 @@ Mapper = setRefClass(
       callSuper()
 
       naming <<- naming
-      mappings <<- ifelse(!is.null(cube$mappings), cube$mappings, list())
-      fact_name <<- ifelse(!is.null(cube$fact), cube$fact, naming$fact_table_name(cube$name))
+      mappings <<- nvl(cube$mappings, list())
+      fact_name <<- nvl(cube$fact, naming$fact_table_name(cube$name))
     },
 
     getitem = function(attribute) {
@@ -251,10 +261,10 @@ Mapper = setRefClass(
 
       dimension = attribute$dimension
 
-      if (!is.null(dimension) && dimension) {
-        schema = ifelse(is.null(naming$dimension_schema), naming$schema, naming$dimension_schema)
+      if (!is.null(dimension)) {
+        schema = nvl(naming$dimension_schema, naming$schema)
 
-        if (dimension$is_flat && !dimension$has_details) {
+        if (dimension$is_flat() && !dimension$has_details()) {
           table = fact_name
         } else {
           table = naming$dimension_table_name(dimension)
@@ -264,7 +274,7 @@ Mapper = setRefClass(
         schema = naming$schema
       }
 
-      data.frame(schema = schema, table = table)
+      list(schema = schema, table = table)
     }
   )
 )
@@ -303,12 +313,12 @@ StarSchemaMapper = setRefClass(
       # added to search for mapping or for implicit attribute creation such as
       # `name_sk` for attribute `name` and locale `sk`.
 
-      if (attribute$expression) {
+      if (!is.null(attribute$expression)) {
         stop(strpintf("Attribute '%s' has an expression, it can not have a direct physical representation", attribute$name))
       }
 
-      logical = attribute$ref()
-      physical = mappings$get(logical)
+      logical = attribute$ref
+      physical = mappings[[logical]]
 
       if (!is.null(physical)) {
         # TODO: Should we not get defaults here somehow?

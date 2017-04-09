@@ -31,3 +31,9 @@ joinAttribute <- function(tbl, attr, schema) {
 
 }
 
+nvl <- function(val, def) {
+  if (is.null(val))
+    def
+  else
+    val
+}

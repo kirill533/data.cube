@@ -40,9 +40,9 @@ AttributeBase = setRefClass(
   fields = c('order', 'format', 'expression', 'missing_value', 'ref', 'dimension'),
   methods = list(
 
-    initialize = function(order=NULL, format=NULL, missing_value=NULL, expression=NULL, ...) {
+    initialize = function(name, order=NULL, format=NULL, missing_value=NULL, expression=NULL, ...) {
 
-      callSuper(...)
+      callSuper(name = name, ...)
 
       format <<- format
       missing_value <<- missing_value
@@ -110,11 +110,85 @@ AttributeBase.from_metadata <- function(metadata=list(), class_ = AttributeBase)
 #
 # Note: copied attributes are dis-owned from dimension. The new
 # dimension has to be assigned after copying.
-Attribute = setRefClass('Attribute', contains = 'AttributeBase')
+Attribute = setRefClass(
+  'Attribute',
+  contains = 'AttributeBase',
+
+  fields = c('dimension'),
+  methods = list(
+
+    initialize = function(name, label=NULL, description=NULL, order=NULL,
+                          info=NULL, format=NULL, dimension=NULL,
+                          missing_value=NULL, expression=NULL, ...) {
+
+      # """Dimension attribute object. Also used as fact detail.
+      #
+      # Attributes:
+      #
+      # * `name` - attribute name, used as identifier
+      # * `label` - attribute label displayed to a user
+      # * `locales` = list of locales that the attribute is localized to
+      # * `order` - default order of this attribute. If not specified, then
+      # order is unexpected. Possible values are: ``'asc'`` or ``'desc'``.
+      # It is recommended and safe to use ``Attribute.ASC`` and
+      # ``Attribute.DESC``
+      # * `info` - custom information dictionary, might be used to store
+      # application/front-end specific information
+      # * `format` - application-specific display format information, useful
+      # for formatting numeric values of measure attributes
+      #
+      # String representation of the `Attribute` returns its `name` (without
+      # dimension prefix).
+      #
+      # `cubes.ArgumentError` is raised when unknown ordering type is
+      # specified.
+      #
+      # Note: copied attributes are dis-owned from dimension. The new
+      # dimension has to be assigned after copying.
+      # """
+
+      callSuper(name=name, label=label,
+                description=description, order=order,
+                info=info, format=format,
+                missing_value=missing_value,
+                expression=expression, ...)
+
+
+      dimension <<- NULL
+
+      setDimension(dimension)
+
+    },
+
+    setDimension = function(dimension) {
+
+      if (!is.null(dimension)) {
+
+        if (dimension$is_flat() && !dimension$has_details()) {
+          ref <<- dimension$name
+        } else {
+          ref <<- paste0(dimension$name, '.', name)
+        }
+      } else {
+        ref <<- name
+      }
+      dimension <<- dimension
+    },
+
+    getDimension = function() {
+      dimension
+    }
+  )
+
+)
 
 
 
 Attribute.from_metadata <- function(metadata=list()) {
+  # do not support locales
+  if (is.list(metadata) && !is.null(metadata$locales))
+    metadata$locales = NULL
+
   AttributeBase.from_metadata(metadata = metadata, class_ = Attribute)
 }
 
@@ -138,22 +212,22 @@ Attribute.from_metadata <- function(metadata=list()) {
 # String representation of a `Measure` returns its full reference.
 Measure = setRefClass(
   'Measure',
-  contains = 'ModelObject',
+  contains = 'AttributeBase',
   fields = c('aggregates', 'formula', 'nonadditive', 'window_size'),
 
   methods = list(
 
-    initialize = function( aggregates=NULL, formula=NULL, nonadditive=NULL,
+    initialize = function(name, aggregates=NULL, formula=NULL, nonadditive=NULL,
                            window_size=NULL, ...) {
 
-      callSuper(...)
+      callSuper(name=name, ...)
 
       formula <<- formula
       aggregates <<- aggregates
       window_size <<- window_size
 
       # Note: synchronize with Dimension.__init__ if relevant/necessary
-      if (is.null(nonadditive) || nonadditive == "none") {
+      if (is.null(nonadditive) || nonadditive == "None") {
         nonadditive <<- NULL
       } else if (nonadditive %in% c("all", "any")) {
         nonadditive <<- "any"
