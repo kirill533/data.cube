@@ -39,6 +39,7 @@
         },
         {
             "name": "measure_expression",
+            "implicit_aggregates": true,
             "measures": [
                     {"name": "price"},
                     {"name": "costs"},
@@ -132,5 +133,5 @@
                     }
                 ]
         }
-    ] 
+    ]
 }

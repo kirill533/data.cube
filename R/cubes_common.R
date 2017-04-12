@@ -15,3 +15,15 @@ assert_all_instances <- function(list_, class_, label="object") {
   for (obj in nvl(list_, c()))
     assert_instance(obj, class_, label="object")
 }
+
+to_label = function(name, capitalize=TRUE) {
+  # """Converts `name` into label by replacing underscores by spaces. If
+  #   `capitalize` is ``True`` (default) then the first letter of the label is
+  #   capitalized."""
+
+  label = stringi::stri_replace_all_fixed(name, "_", " ")
+  if (capitalize)
+    label = stringi::stri_trans_toupper(label)
+
+  label
+}

@@ -5,13 +5,20 @@ if (TESTS_PATH == '')
 create_provider <- function(name) {
   # TODO: this should be rather:
   # provider = FileModelProvider(path)
-  path = file.path(TESTS_PATH, 'models', name)
+  path = self.model_path(name)
   metadata = read_model_metadata(path)
 
   StaticModelProvider$new(metadata=metadata)
 }
 
+self.model_path <- function(name) {
+  file.path(TESTS_PATH, 'models', name)
+}
 
-read_model_metadata <- function(source) {
-  jsonlite::fromJSON(readChar(source, file.info(source)$size), simplifyVector = F)
+self.model_metadata <- function(model) {
+  read_model_metadata(self.model_path(model))
+}
+
+self.assertListEqual = function(a, b, ...) {
+  testthat::expect_true(compareListOfClasses(a, b), ...)
 }

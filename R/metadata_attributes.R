@@ -68,6 +68,55 @@ AttributeBase = setRefClass(
         order <<- NULL
       }
 
+    },
+
+    equal_to = function(other) {
+      if (class(other)[1] != class(.self)[1]) {
+        return(FALSE)
+      }
+
+      # TODO: should we be this strict?
+      return(nvl(name, '') == nvl(other$name, '') &&
+            nvl(label, '') == nvl(other$label, '') &&
+            nvl(unlist(info), '') == nvl(unlist(other$info), '') &&
+            nvl(description, '') == nvl(other$description, '') &&
+            nvl(format, '') == nvl(other$format, '') &&
+            nvl(expression, '') == nvl(other$expression, '') &&
+            nvl(missing_value, '') == nvl(other$missing_value, ''))
+    },
+
+    to_dict = function(options) {
+      d = callSuper(options)
+
+      d$format = format
+      d$order = order
+      d$missing_value = missing_value
+      d$expression = expression
+
+      d$ref = ref
+
+      d
+    },
+
+    copy = function(shallow = FALSE) {
+      def <- .refClassDef
+      value <- new(def, name = name)
+      vEnv <- as.environment(value)
+      selfEnv <- as.environment(.self)
+      for (field in names(def@fieldClasses)) {
+        if (field == 'dimension') {
+          # do nothing
+        } else if (shallow) {
+          assign(field, get(field, envir = selfEnv), envir = vEnv)
+        } else {
+          current <- get(field, envir = selfEnv)
+          if (is(current, "envRefClass")) {
+            current <- current$copy(FALSE)
+          }
+          assign(field, current, envir = vEnv)
+        }
+      }
+      value
     }
   )
 )
@@ -84,6 +133,14 @@ AttributeBase.from_metadata <- function(metadata=list(), class_ = AttributeBase)
     }
     do.call(class_$new, metadata)
   }
+}
+
+as.character.AttributeBase = function(attr) {
+  attr$ref
+}
+
+as.vector.AttributeBase = function(attr, mode = "any") {
+  attr$ref
 }
 
 # Dimension attribute object. Also used as fact detail.
@@ -177,6 +234,13 @@ Attribute = setRefClass(
 
     getDimension = function() {
       dimension
+    },
+
+    to_dict = function(options) {
+      # FIXME: Depreciated key "full_name" in favour of "ref"
+      d = callSuper(options)
+
+      d
     }
   )
 
@@ -191,6 +255,15 @@ Attribute.from_metadata <- function(metadata=list()) {
 
   AttributeBase.from_metadata(metadata = metadata, class_ = Attribute)
 }
+
+as.character.Attribute = function(attr) {
+  attr$ref
+}
+
+as.vector.Attribute = function(attr, mode = "any") {
+  attr$ref
+}
+
 
 # Create a measure attribute. Properties in addition to the attribute
 # base properties:
@@ -236,6 +309,51 @@ Measure = setRefClass(
       } else {
         stop(sprintf("ModelError: Unknown non-additive measure type '%s'", nonadditive))
       }
+    },
+
+    to_dict = function(options) {
+      d = callSuper(options)
+      d$formula = formula
+      d$aggregates = aggregates
+      d$window_size = window_size
+
+      d
+    },
+
+    default_aggregates = function() {
+      # """Creates default measure aggregates from a list of receiver's
+      #   measures. This is just a convenience function, correct models should
+      #   contain explicit list of aggregates. If no aggregates are specified,
+      #   then the only aggregate `sum` is assumed.
+      #   """
+
+      loc_aggregates = list()
+
+      for (agg in nvl(aggregates, 'sum')) {
+        if (agg == "identity") {
+          loc_name = .self$name
+          measure = NULL
+          FUN = NULL
+        } else {
+          loc_name = paste0(.self$name, '_', agg)
+          measure = .self$name
+          FUN = agg
+        }
+
+        aggregate = MeasureAggregate(name=loc_name,
+                                     label=NULL,
+                                     description=description,
+                                     order=order,
+                                     info=info,
+                                     format=format,
+                                     measure=measure,
+                                     FUN=FUN,
+                                     window_size=window_size)
+
+        loc_aggregates[[length(loc_aggregates) + 1]] = aggregate
+      }
+
+      loc_aggregates
     }
   )
 )
@@ -243,6 +361,15 @@ Measure = setRefClass(
 
 Measure.from_metadata <- function(metadata=list()) {
   AttributeBase.from_metadata(metadata = metadata, class_ = Measure)
+}
+
+
+as.character.Measure = function(attr) {
+  attr$ref
+}
+
+as.vector.Measure = function(attr, mode = "any") {
+  attr$ref
 }
 
 
@@ -259,10 +386,70 @@ Measure.from_metadata <- function(metadata=list()) {
 #   the measure in most of the times)
 MeasureAggregate = setRefClass(
   'MeasureAggregate',
-  contains = 'AttributeBase'
+  contains = 'AttributeBase',
+  fields = c('FUN', 'formula', 'measure', 'nonadditive', 'window_size'),
+  methods = list(
+    initialize = function(self, name, label=NULL, description=NULL, order=NULL,
+                 info=NULL, format=NULL, missing_value=NULL, measure=NULL,
+                 FUN=NULL, formula=NULL, expression=NULL,
+                 nonadditive=NULL, window_size=NULL, ...) {
+      # """Masure aggregate
+      #
+      #   Attributes:
+      #
+      #   * `function` – aggregation function for the measure
+      #   * `formula` – name of a formula that contains the arithemtic
+      #     expression (optional)
+      #   * `measure` – measure name for this aggregate (optional)
+      #   * `expression` – arithmetic expression (only if backend supported)
+      #   * `nonadditive` – additive behavior for the aggregate (inherited from
+      #     the measure in most of the times)
+      #   """
+
+      callSuper(name=name, label=label,
+               description=description,
+               order=order, info=info,
+               format=format,
+               missing_value=missing_value,
+               expression=expression)
+
+      FUN <<- FUN
+      formula <<- formula
+      measure <<- measure
+      nonadditive <<- nonadditive
+      window_size <<- window_size
+
+    },
+
+    to_dict = function(options) {
+      d = callSuper(options)
+      d$FUN = FUN
+      d$formula = formula
+      d$measure = measure
+      d$nonadditive = nonadditive
+      d$window_size = window_size
+
+      d
+    }
+
+  )
 )
 
 
 MeasureAggregate.from_metadata <- function(metadata=list()) {
+
+  if (!is.character(metadata) && is.null(metadata$FUN) && !is.null(metadata[['function']])) {
+    metadata$FUN = metadata[['function']]
+    metadata[['function']] <- NULL
+  }
+
   AttributeBase.from_metadata(metadata = metadata, class_ = MeasureAggregate)
+}
+
+as.character.MeasureAggregate = function(attr) {
+  attr$ref
+}
+
+as.vector.MeasureAggregate = function(attr, mode = "any") {
+  attr$ref
 }

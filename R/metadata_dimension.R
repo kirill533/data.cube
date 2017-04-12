@@ -1,3 +1,15 @@
+compareListOfClasses = function(list1, list2) {
+  list1 = as.list(list1)
+  list2 = as.list(list2)
+  if (length(list1) != length(list2))
+    return(FALSE)
+  for (i in 1:length(list1))
+    if (!list1[[i]]$equal_to(list2[[i]]))
+      return(FALSE)
+
+  TRUE
+}
+
 PVT_DEFAULT_LEVEL_ROLES = list(
     "time" = c("year", "quarter", "month", "day", "hour", "minute", "second",
     "week", "weeknum", "dow",
@@ -164,8 +176,8 @@ Dimension = setRefClass(
 
       pvt_hierarchies <<- object_dict(hierarchies)
     } else {
-      default = Hierarchy$new("default", pbl_levels)
-      pvt_hierarchies <<- object_dict(default)
+      default = Hierarchy$new("default", getLevels())
+      pvt_hierarchies <<- object_dict(list(default))
     }
 
     pvt_flat_hierarchy <<- NULL
@@ -182,6 +194,44 @@ Dimension = setRefClass(
 
   },
 
+  equal_to = function(other) {
+    if (is.null(other) || class(other)[1] != class(.self)[1]) {
+      return(FALSE)
+    }
+
+    cond = name == other$name &&
+      nvl(role, '') == nvl(other$role, '') &&
+      nvl(label, '') == nvl(other$label, '') &&
+      nvl(description, '') == nvl(other$description, '') &&
+      nvl(cardinality, '') == nvl(other$cardinality, '') &&
+      nvl(category, '') == nvl(other$category, '') &&
+      nvl(default_hierarchy_name, '') == nvl(other$default_hierarchy_name, '')
+      # pvt_levels == other$pvt_levels && TODO finish comparison of lists (after refactoring to not have recursive references)
+      # pvt_hierarchies == other$pvt_hierarchies TODO finish comparison of lists (after refactoring to not have recursive references)
+
+    cond
+  },
+
+  copy = function(shallow = FALSE) {
+    def <- .refClassDef
+    value <- new(def, name = .self$name, label = .self$label,
+                 description = .self$description,
+                 info = .self$info, levels = getLevels())
+    vEnv <- as.environment(value)
+    selfEnv <- as.environment(.self)
+    for (field in names(def@fieldClasses)) {
+      if (shallow)
+        assign(field, get(field, envir = selfEnv), envir = vEnv)
+      else {
+        current <- get(field, envir = selfEnv)
+        if (is(current, "envRefClass"))
+          current <- current$copy(FALSE)
+        assign(field, current, envir = vEnv)
+      }
+    }
+    value
+  },
+
   has_details = function() {
     # Returns ``True`` when each level has only one attribute, usually key.
 
@@ -195,7 +245,9 @@ Dimension = setRefClass(
   getLevels = function() {
     # Get list of all dimension levels. Order is not guaranteed, use a
     # hierarchy to have known order.
-    pvt_levels
+    nl = pvt_levels
+    names(nl) <- NULL
+    nl
   },
 
   setLevels = function(levels) {
@@ -203,7 +255,62 @@ Dimension = setRefClass(
     for (level in levels) {
       pvt_levels[[level$name]] <<- level
     }
+  },
 
+  setHierarchies = function(hierarchies) {
+    pvt_hierarchies <<- list()
+    for (hier in hierarchies)
+      pvt_hierarchies[[hier.name]] <<- hier
+  },
+
+  hierarchies = function() {
+    # """Get list of dimension hierarchies."""
+
+    nl = pvt_hierarchies
+    names(nl) <- NULL
+    nl
+  },
+
+  level_names = function(self) {
+    # """Get list of level names. Order is not guaranteed, use a hierarchy
+    #     to have known order."""
+
+    names(pvt_levels)
+  },
+
+  level = function(obj) {
+    # """Get level by name or as Level object. This method is used for
+    #     coalescing value"""
+
+    if (is.character(obj)) {
+      if (is.null(pvt_levels[[obj]])) {
+        stop(sprintf("KeyError: No level %s in dimension %s", obj, name))
+      }
+
+      pvt_levels[[obj]]
+    } else if ('Level' %in% class(obj)) {
+      obj
+    } else {
+      stop(sprintf("ValueError: Unknown level object %s (should be a string or Level)", typeof(obj)))
+    }
+  },
+
+  hierarchy = function(obj=NULL) {
+    # """Get hierarchy object either by name or as `Hierarchy`. If `obj` is
+    #     ``None`` then default hierarchy is returned."""
+
+    if (is.null(obj)) {
+      pvt_default_hierarchy
+    } else if (is.character(obj)) {
+      if (is.null(pvt_hierarchies[[obj]])) {
+        stop(sprintf("ModelError: No hierarchy %s in dimension %s", obj, name))
+      }
+      pvt_hierarchies[[obj]]
+    } else if ('Hierarchy' %in% class(obj)) {
+      obj
+    } else {
+      stop(sprintf("ValueError: Unknown hierarchy object %s (should be a string or Hierarchy instance)", typeof(obj)))
+    }
   },
 
   attribute = function(name, by_ref=FALSE, throw_error = TRUE) {
@@ -223,19 +330,35 @@ Dimension = setRefClass(
     return(res)
   },
 
-
-
-
   is_flat = function() {
     # Is true if dimension has only one level
 
     if (!is.null(master)) {
       master$is_flat()
     } else {
-      length(getLevels()) == 1
+      length(pvt_levels) == 1
     }
   },
 
+  key_attributes = function() {
+    # """Return all dimension key attributes, regardless of hierarchy. Order
+    #     is not guaranteed, use a hierarchy to have known order."""
+
+    sapply(pvt_levels, function(level){level$key})
+  },
+
+  attributes = function() {
+    # """Return all dimension attributes regardless of hierarchy. Order is
+    #     not guaranteed, use :meth:`cubes.Hierarchy.all_attributes` to get
+    #     known order. Order of attributes within level is preserved."""
+
+
+    nl = pvt_attributes
+    names(nl) <- NULL
+    nl
+  },
+
+  # @deprecated use copy() instead
   clone = function(name = NULL, hierarchies=NULL, exclude_hierarchies=NULL,
             nonadditive=NULL, default_hierarchy_name=NULL, cardinality=NULL,
             alias=NULL, ...) {
@@ -273,7 +396,7 @@ Dimension = setRefClass(
     if (length(linked) == 0)
       stop("ModelError: No hierarchies to clone.")
 
-    hierarchies = lapply(linked, function(hier){hier}) # $copy() does not work properly with mandatory fields
+    hierarchies = lapply(linked, function(hier){hier$copy()}) # $copy() does not work properly with mandatory fields
 
     # Get relevant levels
     levels = c()
@@ -328,14 +451,62 @@ Dimension = setRefClass(
                      nonadditive=loc_nonadditive,
                      ...)
 
+  },
+
+  to_dict = function(options = list()) {
+    # """Return dictionary representation of the dimension"""
+
+    out = callSuper(options = options)
+
+    hierarchy_limits = options$hierarchy_limits
+
+    out$default_hierarchy_name = hierarchy()$name
+
+    out$role = role
+    out$cardinality = cardinality
+    out$category = category
+
+    out$levels = lapply(getLevels(), function(level){level$to_dict(options)})
+
+    # Collect hierarchies and apply hierarchy depth restrictions
+    hierarchies = c()
+    hierarchy_limits = nvl(hierarchy_limits, list())
+    for (hname in names(pvt_hierarchies)) {
+      h = pvt_hierarchies[[hname]]
+      if (!is.null(hierarchy_limits[[hname]])) {
+        level = hierarchy_limits[[hname]]
+        if (level) {
+          depth = h$level_index(level) + 1
+          options_h = options
+          options_h$depth = depth
+          restricted = h$to_dict(options_h)
+          hierarchies = append(hierarchies, restricted)
+        } else {
+          # we ignore the hierarchy
+        }
+      } else {
+        append(hierarchies, h$to_dict(options))
+      }
+    }
+
+    out$hierarchies = hierarchies
+
+    # Use only for reading, during initialization these keys are ignored,
+    # as they are derived
+    # They are provided here for convenience.
+    out$is_flat = is_flat()
+    out$has_details = has_details()
+
+    out
   }
+
 
 ))
 #    Cube dimension.
 
 
 
-Dimension.from_metadata <- function(cls, metadata, templates=NULL) {
+Dimension.from_metadata <- function(metadata, templates=NULL) {
 #        Create a dimension from a `metadata` dictionary.  Some rules:
 #
 #        * ``levels`` might contain level names as strings – names of levels to
@@ -347,31 +518,29 @@ Dimension.from_metadata <- function(cls, metadata, templates=NULL) {
 
   templates = nvl(templates, list())
 
-  if (!is.null(metadata$template)) {
+  if (!is.character(metadata) && !is.null(metadata$template)) {
+
     template_name = metadata$template
+
     if (!is.null(templates[[template_name]]))
       template = templates[[template_name]]
     else
       stop(sprintf('TemplateRequired %s', template_name))
 
-    levels = template$levels
+    levels = lapply(template$getLevels(), function(level){level$copy()})
 
     # Create copy of template's hierarchies, but reference newly
     # created copies of level objects
     hierarchies = c()
-    level_dict = sapply(levels, as.list, simplify = FALSE, USE.NAMES = TRUE) # do transformation to a list if needed
+    level_dict = object_dict(levels)
 
-    for (hier in template$pvt_hierarchies$values()) {
-      hier_levels = level_dict[hier$levels]
-
-      hier_copy = Hierarchy$new(
-        hier$name,
-        hier_levels,
-        label=hier$label,
-        info=hier$info # TODO might copy references on internal classes
-      )
-
-      hierarchies = c(hierarchies, hier_copy)
+    for (hier in template$hierarchies()) {
+      hier_levels = level_dict[as.character(sapply(hier$getLevels(), function(level){level$name}))]
+      hier_copy = Hierarchy(hier$name,
+                            hier_levels,
+                            label=hier$label,
+                            info=hier$info) # copy.deepcopy
+      hierarchies = append(hierarchies, hier_copy)
     }
 
     default_hierarchy_name = template$default_hierarchy_name
@@ -420,6 +589,7 @@ Dimension.from_metadata <- function(cls, metadata, templates=NULL) {
   if (!is.null(metadata$levels)) {
     # Assure level inheritance
     levels = c()
+    skip = FALSE
 
     for (level_md in metadata$levels) {
       if (is.character(level_md)) {
@@ -435,14 +605,20 @@ Dimension.from_metadata <- function(cls, metadata, templates=NULL) {
       if (!is.null(template)) {
         tryCatch({
           templevel = template$level(level$name)
-        }, {
-          new_info = templevel$info # was deep copy
-          new_info = listMerge(level$info)
-          level$info = new_info
+        }, error = function(e){
+          skip = TRUE
         })
+
+        if (!skip) {
+          new_info = templevel$info # was deep copy
+          new_info = listMerge(new_info, level$info)
+          level$info = new_info
+        }
+
       }
 
-      levels = c(levels, level)
+      if (!skip)
+        levels = c(levels, level)
     }
   }
 
@@ -457,7 +633,7 @@ Dimension.from_metadata <- function(cls, metadata, templates=NULL) {
   } else {
     # Keep only hierarchies which include existing levels
 
-    keep = sapply(hierarchies, function(hier){all(hier$levels %in% level_names)})
+    keep = sapply(hierarchies, function(hier){all(hier$level_names() %in% level_names)})
 
     hierarchies = c(hierarchies[keep])
   }
@@ -494,6 +670,14 @@ Dimension.from_metadata <- function(cls, metadata, templates=NULL) {
 
 }
 
+as.character.Dimension = function(dim, mode = "all") {
+  dim$name
+}
+
+as.vector.Dimension = function(dim, mode = "all") {
+  dim$name
+}
+
 pvt_create_hierarchies <- function(metadata, levels, template=NULL) {
   # Create dimension hierarchies from `metadata` (a list of dictionaries or
   # strings) and possibly inherit from `template` dimension.
@@ -506,9 +690,9 @@ pvt_create_hierarchies <- function(metadata, levels, template=NULL) {
   if (!is.null(names(metadata))) {
     metadata = list(metadata)
   }
-  for (md in metadata)
+  for (md in metadata) {
     if (is.character(md)) {
-      if (is.null(template) || !template) {
+      if (is.null(template)) {
         stop(sprintf("ModelError: Can not specify just a hierarchy name (%s) if there is no template", md))
       }
       hier = template$hierarchy(md)
@@ -520,7 +704,9 @@ pvt_create_hierarchies <- function(metadata, levels, template=NULL) {
       hier = do.call(Hierarchy$new, md)
     }
 
-    hierarchies = c(hierarchies, hier)
+    hierarchies = append(hierarchies, hier)
+  }
+
 
   hierarchies
 }
@@ -553,19 +739,44 @@ Hierarchy = setRefClass(
 
       callSuper(name=name, label=label, description=description, info=info, ...)
 
-      if (is.null(levels)) {
+      if (is.null(levels) || length(levels) == 0) {
         stop(sprintf("ModelInconsistencyError: Hierarchy level list should not be empty (in %s)", name))
       }
 
-      if (any(is.character(levels))) {
+      if (any(is.character(levels)) || any(sapply(levels, is.character))) {
         stop("ModelInconsistencyError: Levels should not be provided as strings to Hierarchy.")
       }
 
       pvt_levels <<- object_dict(levels)
     },
 
+    copy = function(shallow = FALSE) {
+      def <- .refClassDef
+      value <- new(def, name = .self$name, label = .self$label,
+                   description = .self$description,
+                   info = .self$info, levels = sapply(getLevels(), function(l){l$copy(shallow)}))
+      vEnv <- as.environment(value)
+      selfEnv <- as.environment(.self)
+      for (field in names(def@fieldClasses)) {
+        if (field == 'pvt_levels') {
+          # do nothing
+        } else if (shallow) {
+          assign(field, get(field, envir = selfEnv), envir = vEnv)
+        } else {
+          current <- get(field, envir = selfEnv)
+          if (is(current, "envRefClass"))
+            current <- current$copy(FALSE)
+          assign(field, current, envir = vEnv)
+        }
+      }
+      value
+    },
+
     getLevels = function() {
-      pvt_levels
+
+      nl = pvt_levels
+      names(nl) <- NULL
+      nl
     },
 
     setLevels = function(levels) {
@@ -578,6 +789,227 @@ Hierarchy = setRefClass(
 
     level_names = function() {
       names(pvt_levels)
+    },
+
+    equal_to = function(other) {
+      if (is.null(other) || class(other)[1] != class(.self)[1])
+        return(FALSE)
+
+      name == other$name && nvl(label, '') == nvl(other$label, '') && compareListOfClasses(getLevels(), other$getLevels())
+    },
+
+    len = function() {
+      length(pvt_levels)
+    },
+
+    getitem = function(item) {
+
+      if ((is.numeric(item) && (item < 1 || item > length(pvt_levels)) ) || is.null(pvt_levels[[item]])) {
+        stop(sprintf("HierarchyError: Hierarchy '%s' has only %d levels, asking for deeper level",
+                     name, length(pvt_levels) ))
+      }
+      pvt_levels[[item]]
+    },
+
+    contains = function(item) {
+
+      if (is.character(item)) {
+        item.name = item
+      } else {
+        item.name = item$name
+      }
+
+      level = pvt_levels[[item.name]]
+
+      if (is.null(level)) {
+        FALSE
+      } else if(!is.character(item)) {
+        level$equal_to(item)
+      } else {
+        TRUE
+      }
+    },
+
+    levels_for_path = function(path, drilldown=FALSE) {
+      # """Returns levels for given path. If path is longer than hierarchy
+      # levels, `cubes.ArgumentError` exception is raised"""
+
+      depth = ifelse(is.null(path), 0, length(path))
+
+      levels_for_depth(depth, drilldown)
+    },
+
+    levels_for_depth = function(depth, drilldown=FALSE) {
+      # """Returns levels for given `depth`. If `path` is longer than
+      # hierarchy levels, `cubes.ArgumentError` exception is raised"""
+
+      if (depth == 0) {
+        return(list())
+      }
+      depth = nvl(depth, 1)
+      extend = ifelse(drilldown, 1, 0)
+
+      if (depth + extend > length(getLevels())) {
+        stop(sprintf("HierarchyError: Depth %d is longer than hierarchy levels (drilldown: %s)", depth, drilldown))
+      }
+
+      l = getLevels()
+      # if (depth + extend == 1) {
+      #   l[[1]]
+      # } else {
+        l[1:(depth + extend)]
+      # }
+    },
+
+    next_level = function(level) {
+      # """Returns next level in hierarchy after `level`. If `level` is last
+      # level, returns ``None``. If `level` is ``None``, then the first level
+      # is returned."""
+
+      if (is.null(level)) {
+        return(getLevels()[[1]])
+      }
+
+
+      l = getLevels()
+
+      return_next = FALSE
+      for (l_item in l) {
+        if (return_next) {
+          return(l_item)
+        }
+        if (l_item$equal_to(level)) {
+          return_next = TRUE
+        }
+      }
+
+      NULL
+    },
+
+    previous_level = function(level) {
+      # """Returns previous level in hierarchy after `level`. If `level` is
+      # first level or ``None``, returns ``None``"""
+
+      if (is.null(level)) {
+        return(NULL)
+      }
+
+      l = getLevels()
+
+      prev = NULL
+      for (l_item in l) {
+        if (l_item$equal_to(level)) {
+          return(prev)
+        }
+        prev = l_item
+      }
+
+      NULL
+    },
+
+    level_index = function(level) {
+      # """Get order index of level. Can be used for ordering and comparing
+      # levels within hierarchy."""
+
+      if (!is.null(level)) {
+        l = getLevels()
+
+        index = 0
+        for (l_item in l) {
+          index = index + 1
+          if (is.character(level)) {
+            if (level == as.character(l_item)) {
+              return(index)
+            }
+          } else if (l_item$equal_to(level)) {
+            return(index)
+          }
+        }
+      }
+
+      stop(sprintf("HierarchyError: Level %s is not part of hierarchy %s", as.character(level), name))
+    },
+
+    is_last = function(level) {
+      # """Returns `True` if `level` is last level of the hierarchy."""
+      l = getLevels()
+
+      l[[length(l)]]$equal_to(level)
+    },
+
+    rollup = function(path, level=NULL) {
+      # """Rolls-up the path to the `level`. If `level` is ``None`` then path
+      # is rolled-up only one level.
+      # If `level` is deeper than last level of `path` the
+      # `cubes.HierarchyError` exception is raised. If `level` is the same as
+      # `path` level, nothing happens."""
+
+      if (!is.null(level)) {
+        last = level_index(level)
+        if (last > length(path)) {
+          stop(sprintf("HierarchyError: Can not roll-up: level '%s' – it is deeper than deepest element of path %s", as.character(level), paste0(path, collapse = ',')))
+        }
+      } else if (length(path) > 0) {
+        last = length(path) - 1
+      } else {
+        last = NULL
+      }
+
+      if (is.null(last)) {
+        return(list())
+      } else {
+        path[1:last]
+      }
+
+    },
+
+    path_is_base = function(path) {
+      # """Returns True if path is base path for the hierarchy. Base path is a
+      # path where there are no more levels to be added - no drill down
+      # possible."""
+
+      !is.null(path) && length(path) == length(getLevels())
+    },
+
+    key_attributes = function() {
+      # """Return all dimension key attributes as a single list."""
+
+      sapply(getLevels(), function(level){level$key})
+    },
+
+    all_attributes = function() {
+      # """Return all dimension attributes as a single list."""
+
+      attributes = c()
+      for (level in getLevels())
+        attributes = append(attributes, level$attributes)
+
+      attributes
+    },
+
+    to_dict = function(options = list()) {
+      # """Convert to dictionary. Keys:
+      #
+      #   * `name`: hierarchy name
+      #   * `label`: human readable label (localizable)
+      #   * `levels`: level names
+      #
+      #   """
+      depth = options$depth
+
+      out = callSuper(options)
+
+      levels = as.character(sapply(getLevels(), as.character))
+
+      if (!is.null(depth)) {
+        out$levels = levels[1:depth]
+      } else {
+        out$levels = levels
+      }
+
+      out$info = info
+
+      out
     }
   )
 )
@@ -632,7 +1064,7 @@ Level = setRefClass(
   fields = c('cardinality', 'role', 'attributes', 'nonadditive', 'key',
              'label_attribute', 'order_attribute', 'order'),
   methods = list(
-    initialize = function(self, name, attributes, key=NULL, order_attribute=NULL,
+    initialize = function(name, attributes = NULL, key=NULL, order_attribute=NULL,
                           order=NULL, label_attribute=NULL, label=NULL, info=NULL,
                           cardinality=NULL, role=NULL, nonadditive=NULL,
                           description=NULL) {
@@ -663,7 +1095,7 @@ Level = setRefClass(
       if (!is.null(key)) {
         key <<- attribute(key)
       } else if(length(attributes) >= 1) {
-        key <<- attributes[1]
+        key <<- attributes[[1]]
       } else {
         stop("ModelInconsistencyError: Attribute list should not be empty")
       }
@@ -675,7 +1107,7 @@ Level = setRefClass(
       if (!is.null(label_attribute)) {
         label_attribute <<- attribute(label_attribute)
       } else if (length(attributes) > 1) {
-        label_attribute <<- attributes[2]
+        label_attribute <<- attributes[[2]]
       } else {
         label_attribute <<- .self$key
       }
@@ -685,13 +1117,40 @@ Level = setRefClass(
       if (!is.null(order_attribute)) {
         order_attribute <<- attribute(order_attribute)
       } else {
-        order_attribute <<- attributes[1]
+        order_attribute <<- attributes[[1]]
       }
 
       order <<- order
 
       cardinality <<- cardinality
 
+    },
+
+    to_dict = function(options) {
+      # """Convert to dictionary"""
+
+      full_attribute_names = nvl(options$full_attribute_names, FALSE)
+
+      out = callSuper(options)
+
+      out$role = role
+
+      if (full_attribute_names) {
+        out$key = key$ref
+        out$label_attribute = label_attribute$ref
+        out$order_attribute = order_attribute$ref
+      } else {
+        out$key = key$name
+        out$label_attribute = label_attribute$name
+        out$order_attribute = order_attribute$name
+      }
+
+      out$order = order
+      out$cardinality = cardinality
+      out$nonadditive = nonadditive
+
+      out$attributes = lapply(attributes, function(attr){attr$to_dict(options)})
+      out
     },
 
     # Get attribute by `name`
@@ -711,11 +1170,53 @@ Level = setRefClass(
       res
     },
 
+    equal_to = function(other) {
+      if (is.null(other) || class(other)[1] != class(.self)[1]) {
+        FALSE
+      } else if (
+        name != other$name ||
+        nvl(label, '') != nvl(other$label, '') ||
+        !key$equal_to(other$key) ||
+        nvl(cardinality, '') != nvl(other$cardinality, '') ||
+        nvl(role, '') != nvl(other$role, '') ||
+        !label_attribute$equal_to(other$label_attribute) ||
+        !order_attribute$equal_to(other$order_attribute) ||
+        !compareListOfClasses(attributes, other$attributes) ||
+        nvl(nonadditive, '') != nvl(other$nonadditive, '')) {
+
+        FALSE
+      } else {
+        TRUE
+      }
+    },
+
     has_details = function() {
       # Is ``True`` when level has more than one attribute, for all levels
       # with only one attribute it is ``False``.
 
       length(attributes) > 1
+    },
+
+    copy = function(shallow = FALSE) {
+      def <- .refClassDef
+      value <- new(def, name = .self$name, label = .self$label,
+                   description = .self$description,
+                   info = .self$info, attributes = lapply(.self$attributes, function(a){a$copy()}))
+      vEnv <- as.environment(value)
+      selfEnv <- as.environment(.self)
+      for (field in names(def@fieldClasses)) {
+        if (field == 'attributes') {
+          # do nothing
+        } else if (shallow) {
+          assign(field, get(field, envir = selfEnv), envir = vEnv)
+        } else {
+          current <- get(field, envir = selfEnv)
+          if (is(current, "envRefClass"))
+            current <- current$copy(FALSE)
+          assign(field, current, envir = vEnv)
+        }
+      }
+      value
     }
 
   )
@@ -731,7 +1232,13 @@ Level.from_metadata <- function(metadata, name=NULL, dimension=NULL) {
     stop("ModelError: No name specified in level metadata")
   }
 
-  attributes = lapply(metadata$attributes, function(attr_metadata){
+  # R specific logic
+  attrs = metadata$attributes
+  if (!is.null(names(attrs))) {
+    attrs = list(attrs)
+  }
+
+  attributes = lapply(attrs, function(attr_metadata){
     attr_metadata$dimension = dimension
     Attribute.from_metadata(attr_metadata)
   })
@@ -742,7 +1249,9 @@ Level.from_metadata <- function(metadata, name=NULL, dimension=NULL) {
   do.call(Level$new, metadata)
 }
 
-
+as.vector.Level = function(level, mode = "all") {
+  level$name
+}
 
 expand_dimension_metadata <- function(metadata, expand_levels=F) {
   # Expands `metadata` to be as complete as possible dimension metadata. If
@@ -759,7 +1268,11 @@ expand_dimension_metadata <- function(metadata, expand_levels=F) {
   name = metadata$name
 
   # Fix levels
-  levels = nvl(metadata$levels, as.character())
+  levels = nvl(metadata$levels, list())
+
+  if (!is.null(names(levels))) {
+    levels = list(levels)
+  }
 
   if (length(levels) < 1 && expand_levels) {
     attributes = c("attributes", "key", "order_attribute", "order", "label_attribute")
@@ -778,7 +1291,7 @@ expand_dimension_metadata <- function(metadata, expand_levels=F) {
     level$name = name
     level$label = metadata$label
 
-    levels = c(level)
+    levels = list(level)
   }
 
   if (length(levels) > 0) {
@@ -835,6 +1348,7 @@ expand_level_metadata <- function(metadata) {
   if (is.null(metadata$name)) {
     stop("ModelError: Level has no name")
   }
+  name = metadata$name
 
   attributes = metadata$attributes
 
@@ -843,7 +1357,7 @@ expand_level_metadata <- function(metadata) {
       "name" = name,
       "label" = metadata$label
     )
-    attributes = c(attribute)
+    attributes = list(attribute)
   }
 
   # TODO: this should belong to attributes.py
